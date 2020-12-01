@@ -1,0 +1,11 @@
+[package]
+name = "advent-of-code-2020"
+version = "0.1.0"
+authors = ["Robin Stocker <robin@nibor.org>"]
+license = "MIT"
+edition = "2018"
+
+[dependencies]
+intrusive-collections = "*"
+itertools = "*"
+num = "*"
