@@ -63,8 +63,8 @@ fn is_valid(passport: &HashMap<String, String>) -> bool {
             return false;
         }
     } else if hgt.ends_with("in") {
-        let cm = hgt.strip_suffix("in").unwrap().parse::<u32>().unwrap_or(0);
-        if cm < 59 || cm > 76 {
+        let inches = hgt.strip_suffix("in").unwrap().parse::<u32>().unwrap_or(0);
+        if inches < 59 || inches > 76 {
             return false;
         }
     } else {
@@ -75,14 +75,7 @@ fn is_valid(passport: &HashMap<String, String>) -> bool {
     if !hcl.starts_with("#") || hcl.len() != 7 {
         return false;
     }
-    if hcl[1..]
-        .find(|c| match c {
-            '0'..='9' => false,
-            'a'..='f' => false,
-            _ => true,
-        })
-        .is_some()
-    {
+    if !hcl[1..].chars().all(|c| matches!(c, '0'..='9' | 'a'..='f')) {
         return false;
     }
 
@@ -102,13 +95,7 @@ fn is_valid(passport: &HashMap<String, String>) -> bool {
     if pid.len() != 9 {
         return false;
     }
-    if pid
-        .find(|c| match c {
-            '0'..='9' => false,
-            _ => true,
-        })
-        .is_some()
-    {
+    if !pid.chars().all(|c| matches!(c, '0'..='9')) {
         return false;
     }
 
