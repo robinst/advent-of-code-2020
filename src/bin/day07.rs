@@ -1,5 +1,7 @@
 //! https://adventofcode.com/2020/day/7
 
+use petgraph::graphmap::DiGraphMap;
+use petgraph::Direction;
 use std::collections::{HashMap, HashSet};
 
 fn main() {
@@ -97,6 +99,68 @@ fn solve2(rules: &HashMap<String, Vec<Bag>>, start: &str, num: u64) -> u64 {
     count
 }
 
+/// Alternative solution using a graph library instead of constructing two different
+/// `HashMap<String, Vec<Bag>>` for part 1 and 2.
+fn parse_rules_graph(rules: &str) -> (HashMap<String, usize>, DiGraphMap<usize, u64>) {
+    let mut names = HashMap::new();
+    let mut graph = DiGraphMap::new();
+    for line in rules.lines() {
+        let mut parts = line.split(" bags contain ");
+
+        let container = parts.next().unwrap().to_string();
+        let len = names.len();
+        let container_index = *names.entry(container).or_insert(len);
+
+        let inside = parts.next().unwrap();
+        for bag in inside.split(", ") {
+            if bag.contains("no other bags") {
+                continue;
+            }
+
+            let s = bag.split(" bag").next().unwrap().to_string();
+            let mut parts = s.splitn(2, " ");
+            let count: u64 = parts.next().unwrap().parse().unwrap();
+            let color = parts.next().unwrap().to_string();
+            let len = names.len();
+            let color_index = *names.entry(color).or_insert(len);
+
+            graph.add_node(container_index);
+            graph.add_node(color_index);
+            graph.add_edge(container_index, color_index, count);
+        }
+    }
+    (names, graph)
+}
+
+fn solve_graph(rules: &DiGraphMap<usize, u64>, start: usize) -> usize {
+    let mut visited = HashSet::new();
+    visited.insert(start);
+
+    let mut work = Vec::new();
+    work.push(start);
+
+    while let Some(s) = work.pop() {
+        for node in rules.neighbors_directed(s, Direction::Incoming) {
+            if !visited.contains(&node) {
+                visited.insert(node);
+                work.push(node);
+            }
+        }
+    }
+    visited.len() - 1
+}
+
+fn solve_graph2(rules: &DiGraphMap<usize, u64>, start: usize, num: u64) -> u64 {
+    rules
+        .neighbors(start)
+        .map(|bag| {
+            let bag_count = rules.edge_weight(start, bag).map_or(0, |c| *c);
+            num * solve_graph2(rules, bag, bag_count)
+        })
+        .sum::<u64>()
+        + num
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -115,6 +179,9 @@ dotted black bags contain no other bags.";
 
         let rules = parse_rules(s);
         assert_eq!(solve(&rules, "shiny gold"), 4);
+
+        let (names, graph) = parse_rules_graph(s);
+        assert_eq!(solve_graph(&graph, names["shiny gold"]), 4);
     }
 
     #[test]
@@ -129,7 +196,9 @@ dark violet bags contain no other bags.
 ";
 
         let rules = parse_rules2(s);
-        dbg!(&rules);
         assert_eq!(solve2(&rules, "shiny gold", 1) - 1, 126);
+
+        let (names, graph) = parse_rules_graph(s);
+        assert_eq!(solve_graph2(&graph, names["shiny gold"], 1) - 1, 126);
     }
 }
