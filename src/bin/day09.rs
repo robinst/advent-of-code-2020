@@ -17,8 +17,8 @@ fn solve(nums: &Vec<u64>, preamble: usize) -> u64 {
         let before = &window[0..window.len() - 1];
         if !before
             .iter()
-            .combinations(2)
-            .any(|nums| nums.iter().map(|n| *n).sum::<u64>() == last)
+            .tuple_combinations()
+            .any(|(a, b)| a + b == last)
         {
             return last;
         }
