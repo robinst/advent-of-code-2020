@@ -1,5 +1,6 @@
 //! https://adventofcode.com/2020/day/8
 
+use reformation::Reformation;
 use std::collections::HashSet;
 
 fn main() {
@@ -7,6 +8,20 @@ fn main() {
     let prog: Vec<_> = input.lines().map(|l| parse(l)).collect();
     println!("One: {}", solve(&prog));
     println!("Two: {}", solve2(prog));
+}
+
+#[derive(Reformation)]
+enum Ins {
+    #[reformation("nop {}")]
+    Nop(i64),
+    #[reformation("acc {}")]
+    Acc(i64),
+    #[reformation("jmp {}")]
+    Jmp(i64),
+}
+
+fn parse(line: &str) -> Ins {
+    Ins::parse(line).unwrap()
 }
 
 fn solve(prog: &Vec<Ins>) -> i64 {
@@ -80,24 +95,6 @@ fn run(prog: &Vec<Ins>) -> Option<i64> {
         if pos == prog.len() as i64 {
             return Some(result);
         }
-    }
-}
-
-enum Ins {
-    Nop(i64),
-    Acc(i64),
-    Jmp(i64),
-}
-
-fn parse(line: &str) -> Ins {
-    let mut parts = line.split(" ");
-    let ins = parts.next().unwrap();
-    let num: i64 = parts.next().unwrap().parse().unwrap();
-    match ins {
-        "nop" => Ins::Nop(num),
-        "acc" => Ins::Acc(num),
-        "jmp" => Ins::Jmp(num),
-        _ => panic!("Unknown op: {}", line),
     }
 }
 
