@@ -1,6 +1,5 @@
 //! https://adventofcode.com/2020/day/10
 
-use itertools::Itertools;
 use std::collections::HashMap;
 
 fn main() {
