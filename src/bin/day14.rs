@@ -1,6 +1,5 @@
 //! https://adventofcode.com/2020/day/14
 
-use num::One;
 use reformation::Reformation;
 use std::collections::HashMap;
 
