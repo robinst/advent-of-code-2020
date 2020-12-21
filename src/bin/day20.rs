@@ -4,8 +4,8 @@ use itertools::Itertools;
 use nom::lib::std::fmt::Formatter;
 use num::integer::sqrt;
 use std::collections::{HashMap, HashSet};
-use std::fmt;
 use std::fmt::Display;
+use std::{fmt, mem};
 
 const TILE_LENGTH: usize = 10;
 
@@ -14,92 +14,9 @@ fn main() {
 
     let puzzle = parse(input);
 
-    println!("One: {}", solve(&puzzle));
-}
-
-#[derive(Clone, Debug)]
-struct Puzzle {
-    tiles: HashMap<u64, Tile>,
-}
-
-#[derive(Clone, Debug)]
-struct Tile {
-    id: u64,
-    content: HashMap<(usize, usize), bool>,
-    sides: Vec<u32>,
-}
-
-impl Tile {
-    fn new(id: u64, content: HashMap<(usize, usize), bool>) -> Tile {
-        let mut sides = Vec::new();
-        // Clockwise sides
-        sides.push(num((0..TILE_LENGTH).map(|x| content[&(x, 0)]).collect()));
-        sides.push(num((0..TILE_LENGTH).map(|y| content[&(9, y)]).collect()));
-        sides.push(num((0..TILE_LENGTH)
-            .rev()
-            .map(|x| content[&(x, 9)])
-            .collect()));
-        sides.push(num((0..TILE_LENGTH)
-            .rev()
-            .map(|y| content[&(0, y)])
-            .collect()));
-        Tile { id, content, sides }
-    }
-
-    fn side(&self, side: u8, rotation: u8, mut flip: bool) -> u32 {
-        let index = if flip {
-            ((8 - side - rotation) % 4) as usize
-        } else {
-            ((side + rotation) % 4) as usize
-        };
-        let mut num = self.sides[index];
-        if side == 2 || side == 3 {
-            // For e.g. the bottom side, we want the number to read from left to right too, so we
-            // can compare with a top side. Because we store the sides in clockwise reading order,
-            // we need to flip the bottom and left side.
-            flip ^= true;
-        }
-        if !flip {
-            num
-        } else {
-            let mut rev = 0;
-            for _ in 0..TILE_LENGTH {
-                rev <<= 1;
-                if num & 1 == 1 {
-                    rev ^= 1;
-                }
-                num >>= 1;
-            }
-            rev
-        }
-    }
-}
-
-impl Display for Tile {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        for y in 0..TILE_LENGTH {
-            for x in 0..TILE_LENGTH {
-                write!(f, "{}", if self.content[&(x, y)] { '#' } else { '.' })?
-            }
-            write!(f, "\n")?
-        }
-        Ok(())
-    }
-}
-
-struct ArrangedTile {
-    id: u64,
-    rotation: u8,
-    flip: bool,
-}
-
-fn num(bits: Vec<bool>) -> u32 {
-    let mut num = 0;
-    for bit in bits {
-        num <<= 1;
-        num += if bit { 1 } else { 0 };
-    }
-    num
+    let part1 = solve(&puzzle);
+    println!("One: {}", part1.0);
+    println!("Two: {}", solve2(&part1.1, part1.2));
 }
 
 fn parse(input: &str) -> Puzzle {
@@ -118,10 +35,12 @@ fn parse(input: &str) -> Puzzle {
             .parse::<u64>()
             .unwrap();
 
-        let mut content = HashMap::new();
+        let mut content = HashSet::new();
         for (row, line) in rest.lines().enumerate() {
             for (col, c) in line.chars().enumerate() {
-                content.insert((col, row), c == '#');
+                if c == '#' {
+                    content.insert((col, row));
+                }
             }
         }
 
@@ -131,10 +50,9 @@ fn parse(input: &str) -> Puzzle {
     Puzzle { tiles }
 }
 
-fn solve(puzzle: &Puzzle) -> u64 {
+fn solve(puzzle: &Puzzle) -> (u64, HashSet<(usize, usize)>, usize) {
     let side_length = sqrt(puzzle.tiles.len());
 
-    // let mut tiles: HashMap<u64, Tile> = puzzle.tiles.iter().map(|t| (t.id, t)).collect();
     let mut grid: HashMap<(usize, usize), ArrangedTile> = HashMap::new();
     let mut candidates: HashSet<u64> = puzzle.tiles.keys().copied().collect();
 
@@ -148,10 +66,27 @@ fn solve(puzzle: &Puzzle) -> u64 {
         &puzzle.tiles,
     ));
 
-    grid[&(0, 0)].id
+    let result = grid[&(0, 0)].id
         * grid[&(0, side_length - 1)].id
         * grid[&(side_length - 1, 0)].id
-        * grid[&(side_length - 1, side_length - 1)].id
+        * grid[&(side_length - 1, side_length - 1)].id;
+
+    let mut set = HashSet::new();
+    for y in 0..side_length {
+        for x in 0..side_length {
+            let ArrangedTile { id, rotation, flip } = grid[&(x, y)];
+            let content = puzzle.tiles[&id].content(rotation, flip);
+            for (ny, ty) in (1..TILE_LENGTH - 1).enumerate() {
+                for (nx, tx) in (1..TILE_LENGTH - 1).enumerate() {
+                    if content.contains(&(tx, ty)) {
+                        set.insert((x * 8 + nx, y * 8 + ny));
+                    }
+                }
+            }
+        }
+    }
+
+    (result, set, side_length * 8)
 }
 
 fn arrange(
@@ -208,6 +143,209 @@ fn arrange(
         }
     }
     false
+}
+
+fn solve2(image: &HashSet<(usize, usize)>, side_length: usize) -> usize {
+    for &flip in &[false, true] {
+        for rotation in 0..4 {
+            let transformed = transform(image, side_length, rotation, flip);
+            let monsters = find_monsters(&transformed, side_length);
+            if monsters > 0 {
+                return image.len() - monsters * 15;
+            }
+        }
+    }
+    0
+}
+
+/// Monster:
+///
+/// ```
+///                   #
+/// #    ##    ##    ###
+///  #  #  #  #  #  #
+/// ```
+fn find_monsters(image: &HashSet<(usize, usize)>, side_length: usize) -> usize {
+    let mut count = 0;
+    for y in 1..side_length - 1 {
+        for x in 0..side_length - 20 {
+            if image.contains(&(x, y)) {
+                // Could be the tail, check other parts
+                if [
+                    // Top
+                    (x + 18, y - 1),
+                    // Middle
+                    (x + 5, y),
+                    (x + 6, y),
+                    (x + 11, y),
+                    (x + 12, y),
+                    (x + 17, y),
+                    (x + 17, y),
+                    (x + 18, y),
+                    (x + 19, y),
+                    // Bottom
+                    (x + 1, y + 1),
+                    (x + 4, y + 1),
+                    (x + 7, y + 1),
+                    (x + 10, y + 1),
+                    (x + 13, y + 1),
+                    (x + 16, y + 1),
+                ]
+                .iter()
+                .all(|p| image.contains(p))
+                {
+                    count += 1;
+                }
+            }
+        }
+    }
+    count
+}
+
+#[derive(Clone, Debug)]
+struct Puzzle {
+    tiles: HashMap<u64, Tile>,
+}
+
+#[derive(Clone, Debug)]
+struct Tile {
+    id: u64,
+    content: HashSet<(usize, usize)>,
+    sides: Vec<u32>,
+}
+
+impl Tile {
+    fn new(id: u64, content: HashSet<(usize, usize)>) -> Tile {
+        let mut sides = Vec::new();
+        // Clockwise sides
+        sides.push(num((0..TILE_LENGTH)
+            .map(|x| content.contains(&(x, 0)))
+            .collect()));
+        sides.push(num((0..TILE_LENGTH)
+            .map(|y| content.contains(&(9, y)))
+            .collect()));
+        sides.push(num((0..TILE_LENGTH)
+            .rev()
+            .map(|x| content.contains(&(x, 9)))
+            .collect()));
+        sides.push(num((0..TILE_LENGTH)
+            .rev()
+            .map(|y| content.contains(&(0, y)))
+            .collect()));
+        Tile { id, content, sides }
+    }
+
+    fn side(&self, side: u8, rotation: u8, mut flip: bool) -> u32 {
+        let index = if flip {
+            ((8 - side - rotation) % 4) as usize
+        } else {
+            ((side + rotation) % 4) as usize
+        };
+        let mut num = self.sides[index];
+        if side == 2 || side == 3 {
+            // For e.g. the bottom side, we want the number to read from left to right too, so we
+            // can compare with a top side. Because we store the sides in clockwise reading order,
+            // we need to flip the bottom and left side.
+            flip ^= true;
+        }
+        if !flip {
+            num
+        } else {
+            let mut rev = 0;
+            for _ in 0..TILE_LENGTH {
+                rev <<= 1;
+                if num & 1 == 1 {
+                    rev ^= 1;
+                }
+                num >>= 1;
+            }
+            rev
+        }
+    }
+
+    fn content(&self, rotation: u8, flip: bool) -> HashSet<(usize, usize)> {
+        transform(&self.content, TILE_LENGTH, rotation, flip)
+    }
+}
+
+fn transform(
+    positions: &HashSet<(usize, usize)>,
+    side_length: usize,
+    rotation: u8,
+    flip: bool,
+) -> HashSet<(usize, usize)> {
+    let (invert_x, invert_y, swap) = match (rotation, flip) {
+        (0, false) => (false, false, false),
+        (1, false) => (true, false, true),
+        (2, false) => (true, true, false),
+        (3, false) => (false, true, true),
+        (0, true) => (true, false, false),
+        (1, true) => (false, false, true),
+        (2, true) => (false, true, false),
+        (3, true) => (true, true, true),
+        (r, _) => panic!("Unknown rotation {}", r),
+    };
+
+    let mut result = HashSet::new();
+    for (mut x, mut y) in positions {
+        if invert_x {
+            x = side_length - 1 - x;
+        }
+        if invert_y {
+            y = side_length - 1 - y;
+        }
+        if swap {
+            mem::swap(&mut x, &mut y);
+        }
+        result.insert((x, y));
+    }
+    result
+}
+
+fn print(positions: &HashSet<(usize, usize)>, side_length: usize) {
+    for y in 0..side_length {
+        for x in 0..side_length {
+            let dot = if positions.contains(&(x, y)) {
+                "#"
+            } else {
+                "."
+            };
+            print!("{}", dot);
+        }
+        println!();
+    }
+}
+
+impl Display for Tile {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        for y in 0..TILE_LENGTH {
+            for x in 0..TILE_LENGTH {
+                let c = if self.content.contains(&(x, y)) {
+                    '#'
+                } else {
+                    '.'
+                };
+                write!(f, "{}", c)?
+            }
+            write!(f, "\n")?
+        }
+        Ok(())
+    }
+}
+
+struct ArrangedTile {
+    id: u64,
+    rotation: u8,
+    flip: bool,
+}
+
+fn num(bits: Vec<bool>) -> u32 {
+    let mut num = 0;
+    for bit in bits {
+        num <<= 1;
+        num += if bit { 1 } else { 0 };
+    }
+    num
 }
 
 #[cfg(test)]
@@ -352,10 +490,13 @@ Tile 3079:
         assert_eq!(tile.side(3, 1, false), 300);
 
         assert_eq!(tile.side(0, 0, true), 300);
-        assert_eq!(tile.side(1, 0, trune), 498);
+        assert_eq!(tile.side(1, 0, true), 498);
         assert_eq!(tile.side(2, 0, true), 924);
         assert_eq!(tile.side(3, 0, true), 89);
         // first: Tile 1951 fits at coord (0, 0) with rotation 0 and flip true
-        assert_eq!(solve(&puzzle), 20899048083289);
+        let result = solve(&puzzle);
+        assert_eq!(result.0, 20899048083289);
+
+        assert_eq!(solve2(&result.1, result.2), 273);
     }
 }
