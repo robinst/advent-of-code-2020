@@ -1,7 +1,6 @@
 //! https://adventofcode.com/2020/day/20
 
 use itertools::Itertools;
-use nom::lib::std::fmt::Formatter;
 use num::integer::sqrt;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
@@ -317,7 +316,7 @@ fn print(positions: &HashSet<(usize, usize)>, side_length: usize) {
 }
 
 impl Display for Tile {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for y in 0..TILE_LENGTH {
             for x in 0..TILE_LENGTH {
                 let c = if self.content.contains(&(x, y)) {
